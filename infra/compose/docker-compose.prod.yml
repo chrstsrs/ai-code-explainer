@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:17-alpine
+    env_file:
+      - ../envs/backend.prod.env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appuser} -d ${POSTGRES_DB:-appdb}"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [appnet]
+
+  backend:
+    build:
+      context: ../../
+      dockerfile: infra/docker/backend.Dockerfile
+      target: prod
+    env_file:
+      - ../envs/backend.prod.env
+    working_dir: /srv/backend/app
+    command: >
+      sh -c "python manage.py wait_for_db --timeout 90 &&
+             python manage.py migrate &&
+             gunicorn server.asgi:application -k uvicorn.workers.UvicornWorker
+             -b 0.0.0.0:8000 --timeout 120"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [appnet]
+
+  nginx:
+    build:
+      context: ../../
+      dockerfile: infra/docker/nginx.Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks: [appnet]
+
+networks:
+  appnet:
+    external: false
+
+volumes:
+  pgdata:
+    external: false

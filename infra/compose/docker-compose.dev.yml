@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:17-alpine
+    env_file:
+      - ../envs/backend.dev.env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appuser} -d ${POSTGRES_DB:-appdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [appnet]
+
+  backend:
+    build:
+      context: ../../
+      dockerfile: infra/docker/backend.Dockerfile
+      target: dev
+    env_file:
+      - ../envs/backend.dev.env
+    working_dir: /srv/backend/app
+    command: >
+      sh -c "python manage.py wait_for_db --timeout 90 &&
+             python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ../../backend:/srv/backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [appnet]
+
+  frontend:
+    build:
+      context: ../../
+      dockerfile: infra/docker/frontend.Dockerfile
+      target: dev
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WDS_SOCKET_PORT=0
+      - REACT_APP_API_URL=http://localhost:8000/api
+    volumes:
+      - ../../frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks: [appnet]
+
+networks:
+  appnet:
+    external: false
+
+volumes:
+  pgdata:
+    external: false

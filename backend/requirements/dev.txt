@@ -1,0 +1,5 @@
+-r base.txt
+gunicorn==22.0.0
+uvicorn==0.30.0
+pytest==8.3.2
+pytest-django==4.8.0
